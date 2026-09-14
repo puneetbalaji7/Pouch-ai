@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pouch — group money, sorted</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --ink:#1B1033;
+    --butter:#FFF6DD;
+    --paper:#FFFFFF;
+    --grape:#6C4EF5;
+    --grape-dark:#4F31D6;
+    --grape-tint:#EEE9FF;
+    --guava:#FF5D73;
+    --guava-dark:#D93A52;
+    --guava-tint:#FFE6E9;
+    --mint:#18B884;
+    --mint-tint:#DEFBEF;
+    --sun:#B8860B;
+    --sun-fill:#FFC93C;
+    --sun-tint:#FFF3D6;
+    --muted:#6E6482;
+    --line:#1B1033;
+    --radius:20px;
+    --shadow-hard: 4px 4px 0 var(--ink);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--butter);
+    color:var(--ink);
+    font-family:'Plus Jakarta Sans', sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:88px;
+  }
+  h1,h2,h3,.display{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    margin:0;
+    letter-spacing:-0.01em;
+  }
+  button{font-family:inherit; cursor:pointer;}
+  input,select,textarea{font-family:inherit; font-size:16px;}
+  .wrap{max-width:1180px; margin:0 auto; padding:0 16px;}
+
+  .banner{
+    background:var(--sun-fill); border-bottom:2.5px solid var(--ink);
+    padding:10px 16px; font-size:13px; font-weight:600; text-align:center;
+  }
+  .banner a{color:var(--ink);}
+
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 16px 8px;
+    max-width:1180px; margin:0 auto;
+  }
+  .brand{display:flex; align-items:center; gap:8px;}
+  .brand-mark{
+    width:36px;height:36px;border-radius:11px;background:var(--grape);
+    display:flex;align-items:center;justify-content:center;
+    font-size:19px; transform:rotate(-6deg);
+    border:2.5px solid var(--ink);
+  }
+  .brand-name{font-size:21px;}
+  .icon-btn{
+    width:38px;height:38px;border-radius:50%;border:2px solid var(--ink);
+    background:var(--paper); display:flex;align-items:center;justify-content:center;
+    font-size:16px;
+  }
+  .icon-btn:active{transform:translateY(1px);}
+
+  .btn{
+    border:2.5px solid var(--ink); border-radius:14px; padding:12px 18px;
+    font-weight:700; font-size:15px; background:var(--paper); color:var(--ink);
+    box-shadow:var(--shadow-hard); transition:transform .08s ease;
+  }
+  .btn:active{ transform:translate(2px,2px); box-shadow:1px 1px 0 var(--ink); }
+  .btn-block{width:100%; display:flex; align-items:center; justify-content:center; gap:8px;}
+  .btn-grape{background:var(--grape); color:#fff;}
+  .btn-guava{background:var(--guava); color:#fff;}
+  .btn-mint{background:var(--mint); color:#fff;}
+  .btn-sun{background:var(--sun-fill); color:var(--ink);}
+  .btn-ghost{background:transparent; box-shadow:none;}
+  .btn:disabled{opacity:.45; cursor:not-allowed; box-shadow:none; transform:none;}
+  .btn-sm{padding:8px 12px; font-size:13px; border-radius:10px; box-shadow:none;}
+
+  .card{
+    background:var(--paper); border:2.5px solid var(--ink); border-radius:var(--radius);
+    box-shadow:var(--shadow-hard); padding:18px;
+  }
+  .sticker{ transform:rotate(-0.6deg); }
+  .sticker:nth-child(even){ transform:rotate(0.5deg); }
+
+  .hero-empty{ text-align:left; padding:26px 20px; margin:14px 0 20px; }
+  .hero-empty p{color:var(--muted); font-size:15px; line-height:1.5; margin:8px 0 18px;}
+  .home-actions{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:26px;}
+  .group-list{display:grid; gap:12px; grid-template-columns:1fr;}
+  @media (min-width:640px){ .group-list{grid-template-columns:1fr 1fr;} }
+  .group-card{
+    display:flex; align-items:center; gap:14px; padding:16px; cursor:pointer;
+    text-align:left; width:100%;
+  }
+  .group-emoji{
+    width:48px;height:48px;border-radius:14px;background:var(--grape-tint);
+    display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;
+    border:2px solid var(--ink);
+  }
+  .group-card .meta{flex:1; min-width:0;}
+  .group-card .g-name{font-family:'Space Grotesk'; font-weight:700; font-size:17px;}
+  .group-card .g-sub{font-size:13px; color:var(--muted); margin-top:2px;}
+  .group-card .g-balance{font-family:'Space Grotesk'; font-weight:700; font-size:18px;}
+  .tag{
+    display:inline-block; font-size:11px; font-weight:700; padding:3px 8px; border-radius:20px;
+    border:1.5px solid var(--ink); margin-left:6px; vertical-align:middle;
+  }
+
+  .group-head{ display:flex; align-items:center; gap:12px; margin:6px 0 18px; flex-wrap:wrap; }
+  .group-head .g-title{font-size:24px;}
+  .code-chip{
+    font-family:'Space Grotesk'; font-weight:700; letter-spacing:.06em;
+    background:var(--grape-tint); border:2px solid var(--ink); border-radius:10px;
+    padding:7px 12px; font-size:13px; display:inline-flex; align-items:center; gap:6px;
+  }
+  .hero-balance{ padding:26px 22px; margin-bottom:16px; }
+  .hero-balance .label{font-size:14px; color:var(--muted); font-weight:600;}
+  .hero-balance .amount{font-size:clamp(38px,8vw,56px); line-height:1.05; margin-top:4px;}
+  .action-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:22px; }
+  .action-card{
+    border:2.5px solid var(--ink); border-radius:16px; padding:16px 14px;
+    display:flex; flex-direction:column; align-items:flex-start; gap:6px;
+    box-shadow:var(--shadow-hard); text-align:left;
+  }
+  .action-card .a-emoji{font-size:22px;}
+  .action-card .a-title{font-family:'Space Grotesk'; font-weight:700; font-size:15px;}
+  .action-card .a-sub{font-size:12px; opacity:.85;}
+  .action-add{background:var(--mint-tint);}
+  .action-out{background:var(--guava-tint);}
+  .action-borrow{background:var(--grape-tint);}
+  .action-repay{background:var(--sun-tint);}
+
+  .section-title{font-size:19px; margin:22px 0 12px; display:flex; align-items:center; justify-content:space-between;}
+  .section-title .add-mini{font-size:13px;}
+
+  .members-grid{display:grid; gap:10px; grid-template-columns:1fr;}
+  .member-card{padding:14px 16px;}
+  .member-top{display:flex; align-items:center; gap:10px;}
+  .m-emoji{width:38px;height:38px;border-radius:50%;background:var(--butter); border:2px solid var(--ink); display:flex;align-items:center;justify-content:center;font-size:18px;}
+  .m-name{font-family:'Space Grotesk'; font-weight:700; font-size:16px;}
+  .m-stats{display:flex; gap:14px; margin-top:10px; flex-wrap:wrap;}
+  .m-stat{font-size:12px;}
+  .m-stat .val{font-family:'Space Grotesk'; font-weight:700; font-size:15px; display:block;}
+  .owe-badge{
+    margin-top:10px; display:inline-block; font-size:12px; font-weight:700; padding:5px 10px;
+    border-radius:20px; border:1.5px solid var(--ink);
+  }
+  .owe-yes{background:var(--sun-tint); color:var(--sun);}
+  .owe-no{background:var(--mint-tint); color:var(--mint);}
+
+  .filter-row{display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; margin-bottom:12px;}
+  .chip{
+    flex-shrink:0; border:2px solid var(--ink); border-radius:20px; padding:6px 13px; font-size:13px;
+    font-weight:600; background:var(--paper);
+  }
+  .chip.active{background:var(--ink); color:var(--butter);}
+
+  .ledger-list{display:flex; flex-direction:column; gap:8px;}
+  .ledger-row{
+    display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:14px;
+    border:2px solid var(--ink); background:var(--paper);
+  }
+  .l-icon{
+    width:36px;height:36px;border-radius:10px; display:flex;align-items:center;justify-content:center;
+    font-size:16px; flex-shrink:0; border:2px solid var(--ink);
+  }
+  .l-icon.contribution{background:var(--mint-tint);}
+  .l-icon.withdrawal{background:var(--guava-tint);}
+  .l-icon.borrow{background:var(--grape-tint);}
+  .l-icon.repayment{background:var(--sun-tint);}
+  .l-mid{flex:1; min-width:0;}
+  .l-title{font-weight:700; font-size:14px;}
+  .l-sub{font-size:12px; color:var(--muted); margin-top:1px;}
+  .l-amount{font-family:'Space Grotesk'; font-weight:700; font-size:15px; white-space:nowrap;}
+  .l-del{background:none;border:none;color:var(--muted);font-size:15px;padding:4px;}
+
+  .empty-note{
+    text-align:center; color:var(--muted); font-size:13px; padding:22px 10px;
+    border:2px dashed var(--ink); border-radius:14px;
+  }
+
+  .bottom-nav{
+    position:fixed; bottom:0; left:0; right:0; background:var(--paper);
+    border-top:2.5px solid var(--ink); display:flex; z-index:40;
+  }
+  .nav-btn{
+    flex:1; background:none; border:none; padding:10px 4px 8px; display:flex; flex-direction:column;
+    align-items:center; gap:2px; font-size:11px; font-weight:700; color:var(--muted);
+  }
+  .nav-btn.active{color:var(--ink);}
+  .nav-btn .n-icon{font-size:19px;}
+
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(27,16,51,.55); display:flex; align-items:flex-end;
+    justify-content:center; z-index:100; padding:0;
+  }
+  @media (min-width:640px){ .modal-overlay{align-items:center; padding:20px;} }
+  .modal-card{
+    background:var(--paper); border:2.5px solid var(--ink); width:100%; max-width:440px;
+    border-radius:22px 22px 0 0; padding:22px 20px 26px; max-height:92vh; overflow-y:auto;
+    box-shadow:0 -4px 0 var(--ink);
+  }
+  @media (min-width:640px){ .modal-card{border-radius:22px; box-shadow:var(--shadow-hard);} }
+  .modal-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-size:12px; font-weight:700; color:var(--muted); margin-bottom:6px;}
+  .field input, .field select, .field textarea{
+    width:100%; padding:12px 13px; border:2px solid var(--ink); border-radius:12px; background:var(--butter);
+  }
+  .field textarea{resize:vertical; min-height:56px;}
+  .amount-input{display:flex; align-items:center; border:2px solid var(--ink); border-radius:12px; background:var(--butter); overflow:hidden;}
+  .amount-input span{padding-left:12px;font-weight:700;}
+  .amount-input input{border:none; background:transparent; flex:1;}
+  .emoji-pick{display:flex; flex-wrap:wrap; gap:6px;}
+  .emoji-opt{width:40px;height:40px;border-radius:10px;border:2px solid var(--ink); background:var(--butter); font-size:18px;}
+  .emoji-opt.sel{background:var(--grape); }
+  .hint{font-size:12.5px; color:var(--muted); margin-top:6px; line-height:1.4;}
+  .hint.warn{color:var(--guava-dark); font-weight:600;}
+  .hint.ok{color:var(--mint); font-weight:600;}
+  .link-box{
+    display:flex; align-items:center; gap:8px; background:var(--butter); border:2px solid var(--ink);
+    border-radius:12px; padding:10px 12px; font-size:13px; word-break:break-all; margin:10px 0;
+  }
+  #toast{
+    position:fixed; bottom:96px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--ink); color:var(--butter); padding:11px 18px; border-radius:30px;
+    font-size:13px; font-weight:600; z-index:200; opacity:0; pointer-events:none; transition:all .25s ease;
+    white-space:nowrap; max-width:90vw; overflow:hidden; text-overflow:ellipsis;
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  .tab-section{display:none;}
+  .tab-section.active{display:block;}
+  @media (min-width:900px){
+    .bottom-nav{display:none;}
+    body{padding-bottom:40px;}
+    .group-main{ display:grid; grid-template-columns:300px 1fr; gap:22px; align-items:start; }
+    #sec-members{grid-column:1; grid-row:1/3;}
+    #sec-overview{grid-column:2; grid-row:1;}
+    #sec-ledger{grid-column:2; grid-row:2;}
+    .tab-section, .tab-section.active{display:block;}
+    .members-grid{grid-template-columns:1fr;}
+  }
+  .about-body{font-size:14px; line-height:1.6;}
+  .about-body b{font-family:'Space Grotesk';}
+  .center-screen{ min-height:70vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+</style>
+</head>
+<body>
+<div id="bannerRoot"></div>
+<div id="app"></div>
+<div id="modalRoot"></div>
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   POUCH — standalone group savings tracker
+   No AI dependency. Data lives in Firestore (if configured)
+   or in this browser's local storage as a fallback.
+   ============================================================ */
+
+/* ---------------------------------------------------------
+   1) PASTE YOUR FIREBASE CONFIG HERE TO ENABLE REAL CROSS-
+      DEVICE SHARING. Leave as-is to run in local-only mode
+      (works, but groups only exist on this one browser).
+   See the setup guide for how to get these values.
+   --------------------------------------------------------- */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBqPCpgOdHUfjo-FTcffUTLpytEClPxDEU",
+  authDomain: "pouch-ai.firebaseapp.com",
+  projectId: "pouch-ai",
+  storageBucket: "pouch-ai.firebasestorage.app",
+  messagingSenderId: "1086780114302",
+  appId: "1:1086780114302:web:f4646637063f61bbda9f2f"
+};
+
+const EMOJIS = ['💸','🐷','🧾','🌱','🍩','🦄','🔥','🎯','🧡','🪄','🌈','🐙','🍉','🎈','🧃','🐝'];
+const CURRENCIES = ['₹','$','€','£','¥','₦','R'];
+const TYPE_META = {
+  contribution:{label:'Added money', icon:'💰', class:'contribution', verb:'added'},
+  withdrawal:{label:'Took money out', icon:'🧾', class:'withdrawal', verb:'took out'},
+  borrow:{label:'Borrowed', icon:'🙋', class:'borrow', verb:'borrowed'},
+  repayment:{label:'Paid back', icon:'✅', class:'repayment', verb:'paid back'},
+};
+
+let STATE = {
+  screen:'home', homeGroups:[], homeLoading:true,
+  currentPtr:null, groupData:null,
+  tab:'overview', ledgerFilter:'all',
+};
+let STORAGE_MODE = 'local'; // 'firebase' | 'local'
+let db = null;
+
+/* ---------------- storage backend ---------------- */
+function initFirebase(){
+  try{
+    if(!window.firebase || !FIREBASE_CONFIG.apiKey || FIREBASE_CONFIG.apiKey.indexOf('YOUR_')===0){
+      return false;
+    }
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+    return true;
+  }catch(e){ console.error('Firebase init failed', e); return false; }
+}
+async function backendGet(code){
+  if(STORAGE_MODE==='firebase'){
+    try{
+      const doc = await db.collection('groups').doc(code).get();
+      return doc.exists ? doc.data() : null;
+    }catch(e){ console.error(e); return null; }
+  }
+  try{ const raw = localStorage.getItem('pouch-group-'+code); return raw ? JSON.parse(raw) : null; }
+  catch(e){ return null; }
+}
+async function backendSet(code, data){
+  if(STORAGE_MODE==='firebase'){
+    try{ await db.collection('groups').doc(code).set(data); return true; }
+    catch(e){ console.error(e); toast('Could not save — check your connection'); return false; }
+  }
+  try{ localStorage.setItem('pouch-group-'+code, JSON.stringify(data)); return true; }
+  catch(e){ return false; }
+}
+function loadRecents(){
+  try{ return JSON.parse(localStorage.getItem('pouch-recents')||'[]'); }catch(e){ return []; }
+}
+function saveRecents(arr){
+  try{ localStorage.setItem('pouch-recents', JSON.stringify(arr)); }catch(e){}
+}
+function addRecent(code, name, emoji){
+  let r = loadRecents().filter(g=>g.code!==code);
+  r.unshift({code, name, emoji, ts:Date.now()});
+  saveRecents(r.slice(0,30));
+}
+
+function uid(){ return Math.random().toString(36).slice(2,10); }
+function genCode(){
+  const chars='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let c=''; for(let i=0;i<6;i++) c+=chars[Math.floor(Math.random()*chars.length)];
+  return c;
+}
+function esc(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function fmt(n, cur){
+  const v = Math.round((n + Number.EPSILON) * 100) / 100;
+  return cur + v.toLocaleString(undefined,{minimumFractionDigits: v%1?2:0, maximumFractionDigits:2});
+}
+function parseAmt(str){
+  const n = parseFloat(str);
+  if(isNaN(n) || n<=0) return null;
+  return Math.round(n*100)/100;
+}
+function round2(n){ return Math.round((n+Number.EPSILON)*100)/100; }
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(()=>t.classList.remove('show'), 2400);
+}
+function shareUrl(code){
+  const base = location.origin + location.pathname;
+  return base + '?g=' + code;
+}
+
+/* ---------------- derived stats ---------------- */
+function memberStats(data, memberId){
+  let contributed=0, withdrawn=0, borrowed=0, repaid=0;
+  for(const t of data.txns){
+    if(t.memberId!==memberId) continue;
+    if(t.type==='contribution') contributed+=t.amount;
+    else if(t.type==='withdrawal') withdrawn+=t.amount;
+    else if(t.type==='borrow') borrowed+=t.amount;
+    else if(t.type==='repayment') repaid+=t.amount;
+  }
+  const available = Math.max(0, round2(contributed-withdrawn));
+  const outstanding = Math.max(0, round2(borrowed-repaid));
+  return {contributed:round2(contributed), withdrawn:round2(withdrawn), borrowed:round2(borrowed), repaid:round2(repaid), available, outstanding};
+}
+function poolCash(data){
+  let cash=0;
+  for(const t of data.txns){
+    if(t.type==='contribution') cash+=t.amount;
+    else if(t.type==='withdrawal') cash-=t.amount;
+    else if(t.type==='borrow') cash-=t.amount;
+    else if(t.type==='repayment') cash+=t.amount;
+  }
+  return round2(cash);
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function render(){
+  document.getElementById('app').innerHTML = STATE.screen==='home' ? renderHomeHTML() : renderGroupHTML();
+}
+function renderBanner(){
+  const el = document.getElementById('bannerRoot');
+  if(STORAGE_MODE==='local'){
+    el.innerHTML = `<div class="banner">Running in local-only mode — groups stay on this device. <a href="#" onclick="App.showAbout();return false;">Set up sharing →</a></div>`;
+  } else { el.innerHTML=''; }
+}
+
+function renderHomeHTML(){
+  let body;
+  if(STATE.homeLoading){
+    body = `<div class="empty-note">Loading your groups…</div>`;
+  } else if(STATE.homeGroups.length===0){
+    body = `
+      <div class="card hero-empty sticker">
+        <h2 style="font-size:22px;">No groups yet 👀</h2>
+        <p>A group is where you and your people track money you're putting in together — like a trip fund, rent kitty, or a lending circle. Start one, or join with a link/code someone shared with you.</p>
+      </div>`;
+  } else {
+    body = `<div class="group-list">` + STATE.homeGroups.map(g=>{
+      const cash = g.data ? poolCash(g.data) : 0;
+      const cur = g.data ? g.data.currency : '$';
+      return `
+      <button class="card group-card" onclick="App.openGroup('${g.code}')">
+        <div class="group-emoji">${g.data ? g.data.emoji : '💸'}</div>
+        <div class="meta">
+          <div class="g-name">${esc(g.data ? g.data.name : g.name)}</div>
+          <div class="g-sub">${g.data ? g.data.members.length : 0} member${g.data && g.data.members.length===1?'':'s'}</div>
+        </div>
+        <div class="g-balance">${fmt(cash, cur)}</div>
+      </button>`;
+    }).join('') + `</div>`;
+  }
+  return `
+    <div class="wrap">
+      <div class="topbar">
+        <div class="brand">
+          <div class="brand-mark">🪙</div>
+          <div class="brand-name display">Pouch</div>
+        </div>
+        <button class="icon-btn" onclick="App.showAbout()" title="About & privacy">ⓘ</button>
+      </div>
+      <div class="wrap" style="padding-top:4px;">
+        <div class="home-actions">
+          <button class="btn btn-grape btn-block" onclick="App.showCreateGroup()">✨ Start a group</button>
+          <button class="btn btn-block" onclick="App.showJoinGroup()">🔑 Join with code</button>
+        </div>
+        ${body}
+      </div>
+    </div>
+  `;
+}
+
+function renderGroupHTML(){
+  const data = STATE.groupData;
+  const code = STATE.currentPtr.code;
+  const cur = data.currency;
+  const cash = poolCash(data);
+  const owedTotal = round2(data.members.reduce((s,m)=>s+memberStats(data,m.id).outstanding,0));
+
+  const overview = `
+    <div id="sec-overview" class="tab-section ${STATE.tab==='overview'?'active':''}">
+      <div class="card hero-balance sticker">
+        <div class="label">In the pot right now</div>
+        <div class="amount display">${fmt(cash, cur)}</div>
+        ${owedTotal>0 ? `<div class="hint" style="margin-top:8px;">${fmt(owedTotal,cur)} of that is still owed back by borrowers.</div>` : `<div class="hint ok" style="margin-top:8px;">Nobody owes the pot anything right now ✅</div>`}
+      </div>
+      <div class="action-grid">
+        <button class="action-card action-add" onclick="App.openTxnModal('contribution')">
+          <div class="a-emoji">💰</div><div class="a-title">Add money</div><div class="a-sub">Put cash into the pot</div>
+        </button>
+        <button class="action-card action-out" onclick="App.openTxnModal('withdrawal')">
+          <div class="a-emoji">🧾</div><div class="a-title">Take money out</div><div class="a-sub">Only your own money</div>
+        </button>
+        <button class="action-card action-borrow" onclick="App.openTxnModal('borrow')">
+          <div class="a-emoji">🙋</div><div class="a-title">Borrow</div><div class="a-sub">Take more than you've put in</div>
+        </button>
+        <button class="action-card action-repay" onclick="App.openTxnModal('repayment')">
+          <div class="a-emoji">✅</div><div class="a-title">Pay back</div><div class="a-sub">Settle what you owe</div>
+        </button>
+      </div>
+    </div>`;
+
+  const membersHtml = data.members.length===0
+    ? `<div class="empty-note">No members yet. Add whoever's in on this 👇</div>`
+    : `<div class="members-grid">${data.members.map(m=>{
+        const st = memberStats(data, m.id);
+        return `
+        <div class="card member-card">
+          <div class="member-top"><div class="m-emoji">${m.emoji}</div><div class="m-name">${esc(m.name)}</div></div>
+          <div class="m-stats">
+            <div class="m-stat"><span class="val" style="color:var(--mint)">${fmt(st.available,cur)}</span>Own money in pot</div>
+            <div class="m-stat"><span class="val">${fmt(st.contributed,cur)}</span>Added total</div>
+            <div class="m-stat"><span class="val">${fmt(st.withdrawn,cur)}</span>Taken out</div>
+          </div>
+          <div class="owe-badge ${st.outstanding>0?'owe-yes':'owe-no'}">${st.outstanding>0 ? `Owes ${fmt(st.outstanding,cur)}` : 'All settled'}</div>
+        </div>`;
+      }).join('')}</div>`;
+
+  const members = `
+    <div id="sec-members" class="tab-section ${STATE.tab==='members'?'active':''}">
+      <div class="section-title">Members <button class="btn btn-sm add-mini" onclick="App.showAddMember()">+ Add</button></div>
+      ${membersHtml}
+    </div>`;
+
+  const filters = ['all','contribution','withdrawal','borrow','repayment'];
+  const filterLabels = {all:'All', contribution:'Added', withdrawal:'Took out', borrow:'Borrowed', repayment:'Paid back'};
+  let txns = [...data.txns].sort((a,b)=>b.ts-a.ts);
+  if(STATE.ledgerFilter!=='all') txns = txns.filter(t=>t.type===STATE.ledgerFilter);
+  const ledgerRows = txns.length===0
+    ? `<div class="empty-note">No transactions here yet.</div>`
+    : `<div class="ledger-list">${txns.map(t=>{
+        const meta = TYPE_META[t.type];
+        const member = data.members.find(m=>m.id===t.memberId);
+        const dateStr = new Date(t.ts).toLocaleDateString(undefined,{month:'short', day:'numeric'});
+        return `
+        <div class="ledger-row">
+          <div class="l-icon ${meta.class}">${meta.icon}</div>
+          <div class="l-mid">
+            <div class="l-title">${esc(member?member.name:'Someone')} ${meta.verb}</div>
+            <div class="l-sub">${dateStr}${t.note?' · '+esc(t.note):''}</div>
+          </div>
+          <div class="l-amount">${fmt(t.amount,cur)}</div>
+          <button class="l-del" title="Delete" onclick="App.deleteTxn('${t.id}')">✕</button>
+        </div>`;
+      }).join('')}</div>`;
+
+  const ledger = `
+    <div id="sec-ledger" class="tab-section ${STATE.tab==='ledger'?'active':''}">
+      <div class="section-title">Ledger</div>
+      <div class="filter-row">
+        ${filters.map(f=>`<button class="chip ${STATE.ledgerFilter===f?'active':''}" onclick="App.setLedgerFilter('${f}')">${filterLabels[f]}</button>`).join('')}
+      </div>
+      ${ledgerRows}
+    </div>`;
+
+  return `
+    <div class="wrap">
+      <div class="topbar">
+        <button class="icon-btn" onclick="App.goHome()">←</button>
+        <div style="display:flex; gap:8px;">
+          <button class="icon-btn" onclick="App.refreshGroup()" title="Refresh">⟳</button>
+          <button class="icon-btn" onclick="App.showAbout()" title="About & privacy">ⓘ</button>
+        </div>
+      </div>
+      <div class="wrap" style="padding-top:2px;">
+        <div class="group-head">
+          <div class="group-emoji" style="width:44px;height:44px;font-size:22px;">${data.emoji}</div>
+          <div class="g-title display">${esc(data.name)}</div>
+          <button class="code-chip" onclick="App.showShare()">🔗 Share</button>
+        </div>
+        <div class="group-main">${members}${overview}${ledger}</div>
+      </div>
+    </div>
+    <div class="bottom-nav">
+      <button class="nav-btn ${STATE.tab==='overview'?'active':''}" onclick="App.setTab('overview')"><span class="n-icon">🏠</span>Overview</button>
+      <button class="nav-btn ${STATE.tab==='members'?'active':''}" onclick="App.setTab('members')"><span class="n-icon">👥</span>Members</button>
+      <button class="nav-btn ${STATE.tab==='ledger'?'active':''}" onclick="App.setTab('ledger')"><span class="n-icon">🧾</span>Ledger</button>
+    </div>
+  `;
+}
+
+/* ============================================================ MODALS ============================================================ */
+function openModal(html){ document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay" onclick="if(event.target===this) App.closeModal()">${html}</div>`; }
+function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
+function modalShell(title, inner){
+  return `<div class="modal-card" onclick="event.stopPropagation()">
+    <div class="modal-head"><h3 style="font-size:19px;">${title}</h3><button class="icon-btn" onclick="App.closeModal()">✕</button></div>
+    ${inner}</div>`;
+}
+
+function showCreateGroup(){
+  let chosenEmoji = EMOJIS[Math.floor(Math.random()*EMOJIS.length)];
+  window.__pickedEmoji = chosenEmoji;
+  const inner = `
+    <div class="field"><label>Group name</label><input id="cgName" type="text" placeholder="e.g. Goa Trip Fund" maxlength="40" /></div>
+    <div class="field"><label>Pick a vibe</label><div class="emoji-pick" id="cgEmojiPick">
+      ${EMOJIS.map(e=>`<button type="button" class="emoji-opt ${e===chosenEmoji?'sel':''}" onclick="App.pickEmoji(this,'${e}')">${e}</button>`).join('')}
+    </div></div>
+    <div class="field"><label>Currency</label><select id="cgCurrency">${CURRENCIES.map(c=>`<option value="${c}">${c}</option>`).join('')}</select></div>
+    <div class="hint">You'll get a shareable link right after — send it to whoever's in the group.</div>
+    <button class="btn btn-grape btn-block" style="margin-top:16px;" onclick="App.submitCreateGroup()">Create group</button>
+  `;
+  openModal(modalShell('Start a group', inner));
+}
+function pickEmoji(el, e){
+  window.__pickedEmoji = e;
+  document.querySelectorAll('.emoji-opt').forEach(b=>b.classList.remove('sel'));
+  el.classList.add('sel');
+}
+async function submitCreateGroup(){
+  const name = document.getElementById('cgName').value.trim();
+  if(!name){ toast('Give your group a name first'); return; }
+  const currency = document.getElementById('cgCurrency').value;
+  const emoji = window.__pickedEmoji || '💸';
+  const code = genCode();
+  const data = { name, emoji, currency, createdAt: Date.now(), members:[], txns:[] };
+  const ok = await backendSet(code, data);
+  if(!ok){ toast('Could not create group — try again'); return; }
+  addRecent(code, name, emoji);
+  closeModal();
+  await openGroup(code);
+  showShare(true);
+}
+
+function showJoinGroup(){
+  const inner = `
+    <div class="field"><label>Group code</label>
+      <input id="jgCode" type="text" placeholder="e.g. 7QX3KP" maxlength="8" style="text-transform:uppercase; letter-spacing:.08em; font-weight:700;" />
+    </div>
+    <div class="hint">Ask whoever started the group for their code, or open the link they sent you.</div>
+    <button class="btn btn-grape btn-block" style="margin-top:16px;" onclick="App.submitJoinGroup()">Join group</button>
+  `;
+  openModal(modalShell('Join with a code', inner));
+}
+async function submitJoinGroup(){
+  const code = document.getElementById('jgCode').value.trim().toUpperCase();
+  if(!code){ toast('Enter a code first'); return; }
+  closeModal();
+  await openGroup(code);
+}
+
+function showShare(justCreated){
+  const code = STATE.currentPtr.code;
+  const url = shareUrl(code);
+  const inner = `
+    ${justCreated ? `<p class="hint ok">Group created! Share this so people can join:</p>` : ''}
+    <div class="link-box"><span style="flex:1;">${url}</span></div>
+    <div class="hint">Code: <b>${code}</b></div>
+    <button class="btn btn-grape btn-block" style="margin-top:14px;" onclick="App.copyLink('${url}')">📋 Copy link</button>
+    <button class="btn btn-block" style="margin-top:10px;" onclick="App.nativeShare('${url}','${esc(STATE.groupData.name)}')">📤 Share…</button>
+    ${STORAGE_MODE==='local' ? `<div class="hint warn" style="margin-top:12px;">Heads up: this deployment is running in local-only mode, so this link won't load the group on another device yet. See the ⓘ About screen for how to turn on real sharing.</div>` : `<div class="hint" style="margin-top:12px;">Anyone with this link can view and add to this group — treat it like a shared password.</div>`}
+  `;
+  openModal(modalShell('Share this group', inner));
+}
+function copyLink(url){
+  if(navigator.clipboard) navigator.clipboard.writeText(url).catch(()=>{});
+  toast('Link copied!');
+}
+function nativeShare(url, name){
+  if(navigator.share){
+    navigator.share({title:'Join '+name+' on Pouch', url}).catch(()=>{});
+  } else {
+    copyLink(url);
+  }
+}
+
+function showAddMember(){
+  let chosenEmoji = EMOJIS[Math.floor(Math.random()*EMOJIS.length)];
+  window.__pickedEmoji = chosenEmoji;
+  const inner = `
+    <div class="field"><label>Name</label><input id="amName" type="text" placeholder="e.g. Priya" maxlength="30" /></div>
+    <div class="field"><label>Avatar</label><div class="emoji-pick">
+      ${EMOJIS.map(e=>`<button type="button" class="emoji-opt ${e===chosenEmoji?'sel':''}" onclick="App.pickEmoji(this,'${e}')">${e}</button>`).join('')}
+    </div></div>
+    <button class="btn btn-grape btn-block" style="margin-top:16px;" onclick="App.submitAddMember()">Add member</button>
+  `;
+  openModal(modalShell('Add a member', inner));
+}
+async function submitAddMember(){
+  const name = document.getElementById('amName').value.trim();
+  if(!name){ toast('Enter a name first'); return; }
+  const data = STATE.groupData;
+  data.members.push({id:uid(), name, emoji: window.__pickedEmoji || '🙂'});
+  await backendSet(STATE.currentPtr.code, data);
+  closeModal(); toast(name+' added'); render();
+}
+
+function openTxnModal(type){
+  const data = STATE.groupData;
+  if(data.members.length===0){ toast('Add a member first'); showAddMember(); return; }
+  const titles = {contribution:'Add money', withdrawal:'Take money out', borrow:'Borrow from the pot', repayment:'Pay back what you owe'};
+  const subs = {
+    contribution:"Cash going into the pot.",
+    withdrawal:"You can only take out what's actually yours — money you've already added.",
+    borrow:"Taking more than you've put in. This gets tracked separately as money you owe the group.",
+    repayment:"Putting money back to reduce what you owe."
+  };
+  const inner = `
+    <p class="hint" style="margin-top:-6px;margin-bottom:14px;">${subs[type]}</p>
+    <div class="field"><label>Who</label><select id="txMember" onchange="App.refreshTxnHint()">
+      ${data.members.map(m=>`<option value="${m.id}">${m.emoji} ${esc(m.name)}</option>`).join('')}
+    </select></div>
+    <div class="field"><label>Amount</label><div class="amount-input">
+      <span>${data.currency}</span><input id="txAmount" type="number" min="0" step="0.01" placeholder="0" oninput="App.refreshTxnHint()" />
+    </div></div>
+    <div id="txHint"></div>
+    <div class="field" style="margin-top:14px;"><label>Note (optional)</label><input id="txNote" type="text" placeholder="e.g. for weekend rent" maxlength="60" /></div>
+    <button class="btn ${type==='withdrawal'?'btn-guava':type==='borrow'?'btn-grape':type==='repayment'?'btn-sun':'btn-mint'} btn-block" style="margin-top:6px;" id="txSubmitBtn" onclick="App.submitTxn('${type}')">${titles[type]}</button>
+  `;
+  openModal(modalShell(titles[type], inner));
+  refreshTxnHint(type);
+}
+function refreshTxnHint(forcedType){
+  const data = STATE.groupData;
+  const memberSel = document.getElementById('txMember');
+  const amountEl = document.getElementById('txAmount');
+  const hintEl = document.getElementById('txHint');
+  const btn = document.getElementById('txSubmitBtn');
+  if(!memberSel || !amountEl) return;
+  const t = forcedType || btn.dataset.type;
+  btn.dataset.type = t;
+  const st = memberStats(data, memberSel.value);
+  const cash = poolCash(data);
+  const amt = parseFloat(amountEl.value) || 0;
+  let hint='', ok=true;
+  if(t==='contribution'){
+    hint = `Adding this will bring their own money in the pot to ${fmt(round2(st.available+amt), data.currency)}.`;
+  } else if(t==='withdrawal'){
+    hint = `They've got ${fmt(st.available, data.currency)} of their own in the pot.`;
+    if(amt > st.available){ hint += ` That's more than they've put in — use <b>Borrow</b> instead for the extra.`; ok=false; }
+    else if(amt > cash){ hint += ` The pot only physically holds ${fmt(cash, data.currency)} right now.`; ok=false; }
+  } else if(t==='borrow'){
+    hint = `The pot has ${fmt(cash, data.currency)} available to lend. `;
+    if(st.outstanding>0) hint += `They already owe ${fmt(st.outstanding, data.currency)}. `;
+    if(amt > cash){ hint += `That's more than the pot has right now.`; ok=false; }
+  } else if(t==='repayment'){
+    if(st.outstanding<=0){ hint = `They don't owe anything right now — nothing to pay back.`; ok=false; }
+    else { hint = `They owe ${fmt(st.outstanding, data.currency)}.`; if(amt > st.outstanding){ hint += ` You can pay back at most that much.`; ok=false; } }
+  }
+  hintEl.innerHTML = `<div class="hint ${ok?'':'warn'}">${hint}</div>`;
+  btn.disabled = amt<=0 ? false : !ok;
+}
+async function submitTxn(type){
+  const data = STATE.groupData;
+  const memberId = document.getElementById('txMember').value;
+  const amount = parseAmt(document.getElementById('txAmount').value);
+  const note = document.getElementById('txNote').value.trim().slice(0,60);
+  if(!amount){ toast('Enter an amount'); return; }
+  const st = memberStats(data, memberId);
+  const cash = poolCash(data);
+  if(type==='withdrawal'){
+    if(amount > st.available){ toast("That's more than they've put in — try Borrow"); return; }
+    if(amount > cash){ toast('The pot doesn\'t have that much cash right now'); return; }
+  } else if(type==='borrow'){
+    if(amount > cash){ toast('The pot doesn\'t have that much cash right now'); return; }
+  } else if(type==='repayment'){
+    if(st.outstanding<=0){ toast('Nothing owed — nothing to pay back'); return; }
+    if(amount > st.outstanding){ toast('That\'s more than they owe'); return; }
+  }
+  data.txns.push({ id:uid(), memberId, type, amount, note, ts: Date.now() });
+  await backendSet(STATE.currentPtr.code, data);
+  closeModal(); toast(TYPE_META[type].label+' ✓'); render();
+}
+async function deleteTxn(txnId){
+  if(!confirm('Delete this transaction? This updates all balances.')) return;
+  const data = STATE.groupData;
+  data.txns = data.txns.filter(t=>t.id!==txnId);
+  await backendSet(STATE.currentPtr.code, data);
+  render(); toast('Deleted');
+}
+
+function showAbout(){
+  const inner = `
+    <div class="about-body">
+      <p><b>Storage mode: ${STORAGE_MODE==='firebase' ? 'Cloud (Firebase) — cross-device sharing is on.' : 'Local only — groups stay on this browser/device.'}</b></p>
+      ${STORAGE_MODE==='local' ? `<p>To turn on real sharing across phones/laptops: create a free Firebase project, enable Firestore, and paste its config into the <code>FIREBASE_CONFIG</code> object near the top of this file, then redeploy.</p>` : ''}
+      <p><b>Withdraw vs. Borrow.</b> "Take money out" only ever lets someone take out money they've actually put in. Taking more than that always goes through the separate "Borrow" action, so borrowed money is never mixed up with someone's own contributions — it's tracked and shown as a separate owed amount until it's paid back.</p>
+      <p style="color:var(--muted);">There's no login here, so anyone with a group's link/code can view and add to it — treat sharing it like sharing a password. This is built for casual group funds among people who trust each other, not for highly sensitive financial data.</p>
+    </div>
+    <button class="btn btn-block" style="margin-top:16px;" onclick="App.closeModal()">Got it</button>
+  `;
+  openModal(modalShell('About Pouch', inner));
+}
+
+/* ============================================================ NAV ============================================================ */
+async function goHome(){
+  STATE.screen='home'; STATE.homeLoading=true; render();
+  const recents = loadRecents();
+  const results = await Promise.all(recents.map(async r=>({code:r.code, name:r.name, data: await backendGet(r.code)})));
+  STATE.homeGroups = results.filter(r=>r.data);
+  STATE.homeLoading = false; render();
+}
+async function openGroup(code){
+  const data = await backendGet(code);
+  if(!data){ toast("Can't find a group with that code"); if(STATE.screen!=='group') goHome(); return; }
+  STATE.currentPtr = {code}; STATE.groupData = data;
+  STATE.screen='group'; STATE.tab='overview'; STATE.ledgerFilter='all';
+  addRecent(code, data.name, data.emoji);
+  render();
+}
+async function refreshGroup(){
+  const data = await backendGet(STATE.currentPtr.code);
+  if(data){ STATE.groupData = data; render(); toast('Refreshed'); }
+}
+function setTab(tab){ STATE.tab = tab; render(); }
+function setLedgerFilter(f){ STATE.ledgerFilter = f; render(); }
+
+window.App = {
+  showCreateGroup, showJoinGroup, showAddMember, showAbout, showShare, copyLink, nativeShare,
+  pickEmoji, submitCreateGroup, submitJoinGroup, submitAddMember,
+  openTxnModal, refreshTxnHint, submitTxn, deleteTxn,
+  closeModal, goHome, openGroup, refreshGroup, setTab, setLedgerFilter,
+};
+
+/* ---------------- boot ---------------- */
+(async function boot(){
+  STORAGE_MODE = initFirebase() ? 'firebase' : 'local';
+  renderBanner();
+  const params = new URLSearchParams(location.search);
+  const g = params.get('g');
+  if(g){ await openGroup(g.toUpperCase()); }
+  else { await goHome(); }
+})();
+</script>
+</body>
+</html>
