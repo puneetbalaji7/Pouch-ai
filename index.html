@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <style>
   :root{
     --ink:#1B1033;
@@ -28,6 +29,11 @@
     --line:#1B1033;
     --radius:20px;
     --shadow-hard: 4px 4px 0 var(--ink);
+    /* subtle ledger row tints */
+    --lc-bg:#EAFBEF; --lc-border:#8FE3AC;
+    --lw-bg:#FFEEF0; --lw-border:#FFA7B3;
+    --lb-bg:#F1ECFF; --lb-border:#B9A4FF;
+    --lr-bg:#FFF7E0; --lr-border:#FFCE5C;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -73,6 +79,12 @@
     font-size:16px;
   }
   .icon-btn:active{transform:translateY(1px);}
+  .top-actions{display:flex; gap:8px; align-items:center;}
+  .profile-chip{
+    display:flex; align-items:center; gap:6px; border:2px solid var(--ink); border-radius:30px;
+    padding:5px 12px 5px 5px; background:var(--paper); font-weight:700; font-size:13px;
+  }
+  .profile-chip .pav{width:26px;height:26px;border-radius:50%;background:var(--mint-tint); display:flex;align-items:center;justify-content:center; font-size:13px; border:1.5px solid var(--ink);}
 
   .btn{
     border:2.5px solid var(--ink); border-radius:14px; padding:12px 18px;
@@ -172,20 +184,20 @@
   .ledger-row{
     display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:14px;
     border:2px solid var(--ink); background:var(--paper);
+    border-left-width:6px;
   }
+  .ledger-row.contribution{background:var(--lc-bg); border-left-color:var(--lc-border);}
+  .ledger-row.withdrawal{background:var(--lw-bg); border-left-color:var(--lw-border);}
+  .ledger-row.borrow{background:var(--lb-bg); border-left-color:var(--lb-border);}
+  .ledger-row.repayment{background:var(--lr-bg); border-left-color:var(--lr-border);}
   .l-icon{
     width:36px;height:36px;border-radius:10px; display:flex;align-items:center;justify-content:center;
-    font-size:16px; flex-shrink:0; border:2px solid var(--ink);
+    font-size:16px; flex-shrink:0; border:2px solid var(--ink); background:var(--paper);
   }
-  .l-icon.contribution{background:var(--mint-tint);}
-  .l-icon.withdrawal{background:var(--guava-tint);}
-  .l-icon.borrow{background:var(--grape-tint);}
-  .l-icon.repayment{background:var(--sun-tint);}
   .l-mid{flex:1; min-width:0;}
   .l-title{font-weight:700; font-size:14px;}
   .l-sub{font-size:12px; color:var(--muted); margin-top:1px;}
   .l-amount{font-family:'Space Grotesk'; font-weight:700; font-size:15px; white-space:nowrap;}
-  .l-del{background:none;border:none;color:var(--muted);font-size:15px;padding:4px;}
 
   .empty-note{
     text-align:center; color:var(--muted); font-size:13px; padding:22px 10px;
@@ -256,7 +268,20 @@
   }
   .about-body{font-size:14px; line-height:1.6;}
   .about-body b{font-family:'Space Grotesk';}
-  .center-screen{ min-height:70vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .center-screen{ min-height:80vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .onboard-card{max-width:420px; width:100%;}
+  .code-reveal{
+    text-align:center; font-family:'Space Grotesk'; font-weight:700; font-size:28px;
+    letter-spacing:.08em; background:var(--grape-tint); border:2px solid var(--ink); border-radius:14px;
+    padding:16px; margin:14px 0;
+  }
+  table.admin-table{width:100%; border-collapse:collapse; font-size:13px; margin-top:10px;}
+  table.admin-table th, table.admin-table td{ text-align:left; padding:8px 10px; border-bottom:1.5px solid #e5dfc9; }
+  table.admin-table th{font-family:'Space Grotesk'; font-size:12px; color:var(--muted);}
+  .admin-stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:18px;}
+  .admin-stat{padding:14px;}
+  .admin-stat .n{font-family:'Space Grotesk'; font-weight:700; font-size:26px;}
+  .admin-stat .l{font-size:12px; color:var(--muted);}
 </style>
 </head>
 <body>
@@ -272,12 +297,6 @@
    or in this browser's local storage as a fallback.
    ============================================================ */
 
-/* ---------------------------------------------------------
-   1) PASTE YOUR FIREBASE CONFIG HERE TO ENABLE REAL CROSS-
-      DEVICE SHARING. Leave as-is to run in local-only mode
-      (works, but groups only exist on this one browser).
-   See the setup guide for how to get these values.
-   --------------------------------------------------------- */
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBqPCpgOdHUfjo-FTcffUTLpytEClPxDEU",
   authDomain: "pouch-ai.firebaseapp.com",
@@ -286,6 +305,11 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "1086780114302",
   appId: "1:1086780114302:web:f4646637063f61bbda9f2f"
 };
+
+/* Set this to the email you'll use for the ONE admin account.
+   Create that account in Firebase console > Authentication > Add user,
+   and mirror this exact email in your Firestore rules (see setup notes). */
+const ADMIN_EMAIL = "puneetnagula844@gmail.com";
 
 const EMOJIS = ['💸','🐷','🧾','🌱','🍩','🦄','🔥','🎯','🧡','🪄','🌈','🐙','🍉','🎈','🧃','🐝'];
 const CURRENCIES = ['₹','$','€','£','¥','₦','R'];
@@ -297,14 +321,16 @@ const TYPE_META = {
 };
 
 let STATE = {
-  screen:'home', homeGroups:[], homeLoading:true,
+  screen:'boot', homeGroups:[], homeLoading:true,
   currentPtr:null, groupData:null,
   tab:'overview', ledgerFilter:'all',
+  myProfile:null,
+  adminUsers:[], adminGroups:[], adminLoading:false,
 };
 let STORAGE_MODE = 'local'; // 'firebase' | 'local'
 let db = null;
 
-/* ---------------- storage backend ---------------- */
+/* ---------------- storage backend (generic, works for any "collection") ---------------- */
 function initFirebase(){
   try{
     if(!window.firebase || !FIREBASE_CONFIG.apiKey || FIREBASE_CONFIG.apiKey.indexOf('YOUR_')===0){
@@ -315,30 +341,29 @@ function initFirebase(){
     return true;
   }catch(e){ console.error('Firebase init failed', e); return false; }
 }
-async function backendGet(code){
+async function docGet(collection, id){
   if(STORAGE_MODE==='firebase'){
-    try{
-      const doc = await db.collection('groups').doc(code).get();
-      return doc.exists ? doc.data() : null;
-    }catch(e){ console.error(e); return null; }
+    try{ const doc = await db.collection(collection).doc(id).get(); return doc.exists ? doc.data() : null; }
+    catch(e){ console.error(e); return null; }
   }
-  try{ const raw = localStorage.getItem('pouch-group-'+code); return raw ? JSON.parse(raw) : null; }
+  try{ const raw = localStorage.getItem('pouch-'+collection+'-'+id); return raw ? JSON.parse(raw) : null; }
   catch(e){ return null; }
 }
-async function backendSet(code, data){
+async function docSet(collection, id, data){
   if(STORAGE_MODE==='firebase'){
-    try{ await db.collection('groups').doc(code).set(data); return true; }
+    try{ await db.collection(collection).doc(id).set(data); return true; }
     catch(e){ console.error(e); toast('Could not save — check your connection'); return false; }
   }
-  try{ localStorage.setItem('pouch-group-'+code, JSON.stringify(data)); return true; }
+  try{ localStorage.setItem('pouch-'+collection+'-'+id, JSON.stringify(data)); return true; }
   catch(e){ return false; }
 }
-function loadRecents(){
-  try{ return JSON.parse(localStorage.getItem('pouch-recents')||'[]'); }catch(e){ return []; }
+async function collectionListAll(collection){
+  if(STORAGE_MODE!=='firebase') return null;
+  try{ const snap = await db.collection(collection).get(); return snap.docs.map(d=>({id:d.id, ...d.data()})); }
+  catch(e){ console.error(e); return null; }
 }
-function saveRecents(arr){
-  try{ localStorage.setItem('pouch-recents', JSON.stringify(arr)); }catch(e){}
-}
+function loadRecents(){ try{ return JSON.parse(localStorage.getItem('pouch-recents')||'[]'); }catch(e){ return []; } }
+function saveRecents(arr){ try{ localStorage.setItem('pouch-recents', JSON.stringify(arr)); }catch(e){} }
 function addRecent(code, name, emoji){
   let r = loadRecents().filter(g=>g.code!==code);
   r.unshift({code, name, emoji, ts:Date.now()});
@@ -349,6 +374,11 @@ function uid(){ return Math.random().toString(36).slice(2,10); }
 function genCode(){
   const chars='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   let c=''; for(let i=0;i<6;i++) c+=chars[Math.floor(Math.random()*chars.length)];
+  return c;
+}
+function genUserCode(){
+  const chars='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let c='U'; for(let i=0;i<7;i++) c+=chars[Math.floor(Math.random()*chars.length)];
   return c;
 }
 function esc(s){
@@ -404,15 +434,64 @@ function poolCash(data){
    RENDER
    ============================================================ */
 function render(){
-  document.getElementById('app').innerHTML = STATE.screen==='home' ? renderHomeHTML() : renderGroupHTML();
+  const app = document.getElementById('app');
+  if(STATE.screen==='onboarding') app.innerHTML = renderOnboardingHTML();
+  else if(STATE.screen==='home') app.innerHTML = renderHomeHTML();
+  else if(STATE.screen==='group') app.innerHTML = renderGroupHTML();
+  else if(STATE.screen==='admin-login') app.innerHTML = renderAdminLoginHTML();
+  else if(STATE.screen==='admin-dashboard') app.innerHTML = renderAdminDashboardHTML();
+  else app.innerHTML = '';
 }
 function renderBanner(){
   const el = document.getElementById('bannerRoot');
   if(STORAGE_MODE==='local'){
-    el.innerHTML = `<div class="banner">Running in local-only mode — groups stay on this device. <a href="#" onclick="App.showAbout();return false;">Set up sharing →</a></div>`;
+    el.innerHTML = `<div class="banner">Running in local-only mode — groups & profiles stay on this device.</div>`;
   } else { el.innerHTML=''; }
 }
 
+/* ---------------- ONBOARDING (profile gate) ---------------- */
+function renderOnboardingHTML(){
+  return `
+    <div class="center-screen">
+      <div class="card onboard-card">
+        <div class="brand" style="margin-bottom:14px;">
+          <div class="brand-mark">🪙</div><div class="brand-name display">Pouch</div>
+        </div>
+        <h2 style="font-size:20px; margin-bottom:6px;">Quick profile first</h2>
+        <p class="hint" style="margin-bottom:16px;">So people with the same name don't get mixed up, you'll get your own unique code. Takes 20 seconds.</p>
+        <div class="field"><label>Your name</label><input id="obName" type="text" placeholder="e.g. Priya Sharma" maxlength="40" /></div>
+        <div class="field"><label>Phone number</label><input id="obPhone" type="tel" placeholder="e.g. 98765 43210" maxlength="20" /></div>
+        <div class="field"><label>Who referred you? (optional)</label><input id="obRef" type="text" placeholder="Their name, or leave blank" maxlength="40" /></div>
+        <button class="btn btn-grape btn-block" onclick="App.submitOnboarding()">Create my profile</button>
+        <p class="hint" style="margin-top:12px;">Phone numbers aren't verified — this is a casual tracker for people who already trust each other, not a bank.</p>
+      </div>
+    </div>`;
+}
+async function submitOnboarding(){
+  const name = document.getElementById('obName').value.trim();
+  const phone = document.getElementById('obPhone').value.trim();
+  const referredBy = document.getElementById('obRef').value.trim();
+  if(!name || !phone){ toast('Name and phone are required'); return; }
+  let code = genUserCode();
+  if(STORAGE_MODE==='firebase'){
+    for(let i=0;i<5;i++){ const exists = await docGet('users', code); if(!exists) break; code = genUserCode(); }
+  }
+  const profile = { name, phone, referredBy, code, createdAt: Date.now() };
+  await docSet('users', code, profile);
+  try{ localStorage.setItem('pouch-my-profile', JSON.stringify(profile)); }catch(e){}
+  STATE.myProfile = profile;
+  showCodeReveal(profile);
+}
+function showCodeReveal(profile){
+  const inner = `
+    <p class="hint">This code is yours — it's how the app tells you apart from anyone with the same name.</p>
+    <div class="code-reveal">${profile.code}</div>
+    <button class="btn btn-grape btn-block" onclick="App.closeModal(); App.continueBootAfterProfile();">Let's go</button>
+  `;
+  openModal(modalShell('You\'re set, '+profile.name.split(' ')[0]+' 🎉', inner));
+}
+
+/* ---------------- HOME ---------------- */
 function renderHomeHTML(){
   let body;
   if(STATE.homeLoading){
@@ -438,6 +517,7 @@ function renderHomeHTML(){
       </button>`;
     }).join('') + `</div>`;
   }
+  const p = STATE.myProfile;
   return `
     <div class="wrap">
       <div class="topbar">
@@ -445,7 +525,11 @@ function renderHomeHTML(){
           <div class="brand-mark">🪙</div>
           <div class="brand-name display">Pouch</div>
         </div>
-        <button class="icon-btn" onclick="App.showAbout()" title="About & privacy">ⓘ</button>
+        <div class="top-actions">
+          ${p ? `<button class="profile-chip" onclick="App.showMyProfile()"><span class="pav">👤</span>${esc(p.name.split(' ')[0])}</button>` : ''}
+          <button class="icon-btn" onclick="App.showAbout()" title="About & privacy">ⓘ</button>
+          <button class="icon-btn" onclick="App.goAdmin()" title="Admin">🛡️</button>
+        </div>
       </div>
       <div class="wrap" style="padding-top:4px;">
         <div class="home-actions">
@@ -460,7 +544,6 @@ function renderHomeHTML(){
 
 function renderGroupHTML(){
   const data = STATE.groupData;
-  const code = STATE.currentPtr.code;
   const cur = data.currency;
   const cash = poolCash(data);
   const owedTotal = round2(data.members.reduce((s,m)=>s+memberStats(data,m.id).outstanding,0));
@@ -521,14 +604,13 @@ function renderGroupHTML(){
         const member = data.members.find(m=>m.id===t.memberId);
         const dateStr = new Date(t.ts).toLocaleDateString(undefined,{month:'short', day:'numeric'});
         return `
-        <div class="ledger-row">
-          <div class="l-icon ${meta.class}">${meta.icon}</div>
+        <div class="ledger-row ${meta.class}">
+          <div class="l-icon">${meta.icon}</div>
           <div class="l-mid">
             <div class="l-title">${esc(member?member.name:'Someone')} ${meta.verb}</div>
             <div class="l-sub">${dateStr}${t.note?' · '+esc(t.note):''}</div>
           </div>
           <div class="l-amount">${fmt(t.amount,cur)}</div>
-          <button class="l-del" title="Delete" onclick="App.deleteTxn('${t.id}')">✕</button>
         </div>`;
       }).join('')}</div>`;
 
@@ -539,13 +621,16 @@ function renderGroupHTML(){
         ${filters.map(f=>`<button class="chip ${STATE.ledgerFilter===f?'active':''}" onclick="App.setLedgerFilter('${f}')">${filterLabels[f]}</button>`).join('')}
       </div>
       ${ledgerRows}
+      <p class="hint" style="margin-top:10px;">Records are permanent once added — this keeps the ledger trustworthy for everyone in the group.</p>
     </div>`;
 
+  const p = STATE.myProfile;
   return `
     <div class="wrap">
       <div class="topbar">
         <button class="icon-btn" onclick="App.goHome()">←</button>
-        <div style="display:flex; gap:8px;">
+        <div class="top-actions">
+          ${p ? `<button class="profile-chip" onclick="App.showMyProfile()"><span class="pav">👤</span>${esc(p.name.split(' ')[0])}</button>` : ''}
           <button class="icon-btn" onclick="App.refreshGroup()" title="Refresh">⟳</button>
           <button class="icon-btn" onclick="App.showAbout()" title="About & privacy">ⓘ</button>
         </div>
@@ -567,6 +652,105 @@ function renderGroupHTML(){
   `;
 }
 
+/* ---------------- ADMIN ---------------- */
+function renderAdminLoginHTML(){
+  if(STORAGE_MODE!=='firebase'){
+    return `<div class="center-screen"><div class="card onboard-card">
+      <h2 style="font-size:19px; margin-bottom:8px;">Admin needs cloud mode</h2>
+      <p class="hint">This deployment is running in local-only mode (no Firebase configured), so there's nothing centralized to monitor yet.</p>
+      <button class="btn btn-block" style="margin-top:14px;" onclick="App.goHome()">← Back</button>
+    </div></div>`;
+  }
+  return `<div class="center-screen"><div class="card onboard-card">
+    <h2 style="font-size:19px; margin-bottom:10px;">Admin sign in</h2>
+    <div class="field"><label>Email</label><input id="adEmail" type="email" placeholder="you@example.com" /></div>
+    <div class="field"><label>Password</label><input id="adPass" type="password" placeholder="••••••••" /></div>
+    <button class="btn btn-grape btn-block" onclick="App.submitAdminLogin()">Sign in</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="App.goHome()">← Back</button>
+  </div></div>`;
+}
+function renderAdminDashboardHTML(){
+  if(STATE.adminLoading){
+    return `<div class="center-screen"><div class="empty-note">Loading everything…</div></div>`;
+  }
+  const users = STATE.adminUsers, groups = STATE.adminGroups;
+  const totalPool = {};
+  groups.forEach(g=>{ const c=g.currency||'$'; totalPool[c]=(totalPool[c]||0)+poolCash(g); });
+  const poolStr = Object.keys(totalPool).map(c=>fmt(round2(totalPool[c]), c)).join(' + ') || '—';
+
+  return `
+  <div class="wrap">
+    <div class="topbar">
+      <button class="icon-btn" onclick="App.goHome()">←</button>
+      <div class="brand-name display" style="font-size:18px;">Admin</div>
+      <button class="btn btn-sm" onclick="App.adminSignOut()">Sign out</button>
+    </div>
+    <div class="wrap" style="padding-top:6px;">
+      <div class="admin-stats">
+        <div class="card admin-stat"><div class="n">${users.length}</div><div class="l">Registered people</div></div>
+        <div class="card admin-stat"><div class="n">${groups.length}</div><div class="l">Groups</div></div>
+        <div class="card admin-stat"><div class="n">${poolStr}</div><div class="l">Total pooled cash</div></div>
+      </div>
+
+      <div class="section-title">People</div>
+      <div class="card" style="overflow-x:auto;">
+        <table class="admin-table">
+          <thead><tr><th>Name</th><th>Phone</th><th>Referred by</th><th>Code</th><th>Joined</th></tr></thead>
+          <tbody>
+            ${users.length===0 ? `<tr><td colspan="5" style="color:var(--muted);">No one yet</td></tr>` :
+              users.sort((a,b)=>b.createdAt-a.createdAt).map(u=>`
+              <tr><td>${esc(u.name)}</td><td>${esc(u.phone)}</td><td>${esc(u.referredBy||'—')}</td><td>${u.code||u.id}</td><td>${new Date(u.createdAt).toLocaleDateString()}</td></tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section-title">Groups</div>
+      <div class="card" style="overflow-x:auto;">
+        <table class="admin-table">
+          <thead><tr><th>Name</th><th>Code</th><th>Members</th><th>In pot</th><th>Created</th></tr></thead>
+          <tbody>
+            ${groups.length===0 ? `<tr><td colspan="5" style="color:var(--muted);">No groups yet</td></tr>` :
+              groups.sort((a,b)=>b.createdAt-a.createdAt).map(g=>`
+              <tr><td>${g.emoji||''} ${esc(g.name)}</td><td>${g.id}</td><td>${(g.members||[]).length}</td><td>${fmt(poolCash(g), g.currency||'$')}</td><td>${new Date(g.createdAt).toLocaleDateString()}</td></tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
+function goAdmin(){
+  if(STORAGE_MODE!=='firebase'){ STATE.screen='admin-login'; render(); return; }
+  const cur = firebase.auth().currentUser;
+  if(cur && cur.email===ADMIN_EMAIL){ loadAdminDashboard(); }
+  else { STATE.screen='admin-login'; render(); }
+}
+async function submitAdminLogin(){
+  const email = document.getElementById('adEmail').value.trim();
+  const pass = document.getElementById('adPass').value;
+  if(!email || !pass){ toast('Enter email and password'); return; }
+  try{
+    const cred = await firebase.auth().signInWithEmailAndPassword(email, pass);
+    if(cred.user.email !== ADMIN_EMAIL){
+      toast('That account is not the admin account');
+      await firebase.auth().signOut();
+      return;
+    }
+    await loadAdminDashboard();
+  }catch(e){ toast(e.message || 'Sign in failed'); }
+}
+async function loadAdminDashboard(){
+  STATE.screen='admin-dashboard'; STATE.adminLoading=true; render();
+  const [users, groups] = await Promise.all([collectionListAll('users'), collectionListAll('groups')]);
+  STATE.adminUsers = users||[]; STATE.adminGroups = groups||[]; STATE.adminLoading=false;
+  render();
+}
+async function adminSignOut(){
+  if(STORAGE_MODE==='firebase'){ try{ await firebase.auth().signOut(); }catch(e){} }
+  goHome();
+}
+
 /* ============================================================ MODALS ============================================================ */
 function openModal(html){ document.getElementById('modalRoot').innerHTML = `<div class="modal-overlay" onclick="if(event.target===this) App.closeModal()">${html}</div>`; }
 function closeModal(){ document.getElementById('modalRoot').innerHTML=''; }
@@ -574,6 +758,29 @@ function modalShell(title, inner){
   return `<div class="modal-card" onclick="event.stopPropagation()">
     <div class="modal-head"><h3 style="font-size:19px;">${title}</h3><button class="icon-btn" onclick="App.closeModal()">✕</button></div>
     ${inner}</div>`;
+}
+
+function showMyProfile(){
+  const p = STATE.myProfile;
+  if(!p) return;
+  const inner = `
+    <div class="field"><label>Name</label><input id="mpName" type="text" value="${esc(p.name)}" maxlength="40" /></div>
+    <div class="field"><label>Phone</label><input id="mpPhone" type="tel" value="${esc(p.phone)}" maxlength="20" /></div>
+    <div class="field"><label>Referred by</label><input id="mpRef" type="text" value="${esc(p.referredBy||'')}" maxlength="40" /></div>
+    <div class="hint">Your unique code:</div>
+    <div class="code-reveal" style="font-size:22px; padding:12px;">${p.code}</div>
+    <button class="btn btn-grape btn-block" onclick="App.saveMyProfile()">Save changes</button>
+  `;
+  openModal(modalShell('My profile', inner));
+}
+async function saveMyProfile(){
+  const p = STATE.myProfile;
+  p.name = document.getElementById('mpName').value.trim() || p.name;
+  p.phone = document.getElementById('mpPhone').value.trim() || p.phone;
+  p.referredBy = document.getElementById('mpRef').value.trim();
+  await docSet('users', p.code, p);
+  try{ localStorage.setItem('pouch-my-profile', JSON.stringify(p)); }catch(e){}
+  closeModal(); toast('Profile updated'); render();
 }
 
 function showCreateGroup(){
@@ -602,7 +809,7 @@ async function submitCreateGroup(){
   const emoji = window.__pickedEmoji || '💸';
   const code = genCode();
   const data = { name, emoji, currency, createdAt: Date.now(), members:[], txns:[] };
-  const ok = await backendSet(code, data);
+  const ok = await docSet('groups', code, data);
   if(!ok){ toast('Could not create group — try again'); return; }
   addRecent(code, name, emoji);
   closeModal();
@@ -636,7 +843,7 @@ function showShare(justCreated){
     <div class="hint">Code: <b>${code}</b></div>
     <button class="btn btn-grape btn-block" style="margin-top:14px;" onclick="App.copyLink('${url}')">📋 Copy link</button>
     <button class="btn btn-block" style="margin-top:10px;" onclick="App.nativeShare('${url}','${esc(STATE.groupData.name)}')">📤 Share…</button>
-    ${STORAGE_MODE==='local' ? `<div class="hint warn" style="margin-top:12px;">Heads up: this deployment is running in local-only mode, so this link won't load the group on another device yet. See the ⓘ About screen for how to turn on real sharing.</div>` : `<div class="hint" style="margin-top:12px;">Anyone with this link can view and add to this group — treat it like a shared password.</div>`}
+    ${STORAGE_MODE==='local' ? `<div class="hint warn" style="margin-top:12px;">Heads up: this deployment is running in local-only mode, so this link won't load the group on another device yet.</div>` : `<div class="hint" style="margin-top:12px;">Anyone with this link can view and add to this group — treat it like a shared password.</div>`}
   `;
   openModal(modalShell('Share this group', inner));
 }
@@ -645,11 +852,8 @@ function copyLink(url){
   toast('Link copied!');
 }
 function nativeShare(url, name){
-  if(navigator.share){
-    navigator.share({title:'Join '+name+' on Pouch', url}).catch(()=>{});
-  } else {
-    copyLink(url);
-  }
+  if(navigator.share){ navigator.share({title:'Join '+name+' on Pouch', url}).catch(()=>{}); }
+  else { copyLink(url); }
 }
 
 function showAddMember(){
@@ -669,7 +873,7 @@ async function submitAddMember(){
   if(!name){ toast('Enter a name first'); return; }
   const data = STATE.groupData;
   data.members.push({id:uid(), name, emoji: window.__pickedEmoji || '🙂'});
-  await backendSet(STATE.currentPtr.code, data);
+  await docSet('groups', STATE.currentPtr.code, data);
   closeModal(); toast(name+' added'); render();
 }
 
@@ -746,24 +950,18 @@ async function submitTxn(type){
     if(amount > st.outstanding){ toast('That\'s more than they owe'); return; }
   }
   data.txns.push({ id:uid(), memberId, type, amount, note, ts: Date.now() });
-  await backendSet(STATE.currentPtr.code, data);
+  await docSet('groups', STATE.currentPtr.code, data);
   closeModal(); toast(TYPE_META[type].label+' ✓'); render();
-}
-async function deleteTxn(txnId){
-  if(!confirm('Delete this transaction? This updates all balances.')) return;
-  const data = STATE.groupData;
-  data.txns = data.txns.filter(t=>t.id!==txnId);
-  await backendSet(STATE.currentPtr.code, data);
-  render(); toast('Deleted');
 }
 
 function showAbout(){
   const inner = `
     <div class="about-body">
       <p><b>Storage mode: ${STORAGE_MODE==='firebase' ? 'Cloud (Firebase) — cross-device sharing is on.' : 'Local only — groups stay on this browser/device.'}</b></p>
-      ${STORAGE_MODE==='local' ? `<p>To turn on real sharing across phones/laptops: create a free Firebase project, enable Firestore, and paste its config into the <code>FIREBASE_CONFIG</code> object near the top of this file, then redeploy.</p>` : ''}
-      <p><b>Withdraw vs. Borrow.</b> "Take money out" only ever lets someone take out money they've actually put in. Taking more than that always goes through the separate "Borrow" action, so borrowed money is never mixed up with someone's own contributions — it's tracked and shown as a separate owed amount until it's paid back.</p>
-      <p style="color:var(--muted);">There's no login here, so anyone with a group's link/code can view and add to it — treat sharing it like sharing a password. This is built for casual group funds among people who trust each other, not for highly sensitive financial data.</p>
+      <p><b>Withdraw vs. Borrow.</b> "Take money out" only ever lets someone take out money they've actually put in. Taking more than that always goes through the separate "Borrow" action, so borrowed money is never mixed up with someone's own contributions.</p>
+      <p><b>Ledger records can't be deleted</b> once added, so the history stays trustworthy for everyone in the group. If something's wrong, add a correcting entry with a note.</p>
+      <p><b>Your profile code</b> keeps you distinct from anyone sharing your name — it's yours across every group.</p>
+      <p style="color:var(--muted);">There's no login for groups themselves, so anyone with a group's link/code can view and add to it — treat sharing it like sharing a password. Built for casual group funds among people who trust each other.</p>
     </div>
     <button class="btn btn-block" style="margin-top:16px;" onclick="App.closeModal()">Got it</button>
   `;
@@ -774,12 +972,12 @@ function showAbout(){
 async function goHome(){
   STATE.screen='home'; STATE.homeLoading=true; render();
   const recents = loadRecents();
-  const results = await Promise.all(recents.map(async r=>({code:r.code, name:r.name, data: await backendGet(r.code)})));
+  const results = await Promise.all(recents.map(async r=>({code:r.code, name:r.name, data: await docGet('groups', r.code)})));
   STATE.homeGroups = results.filter(r=>r.data);
   STATE.homeLoading = false; render();
 }
 async function openGroup(code){
-  const data = await backendGet(code);
+  const data = await docGet('groups', code);
   if(!data){ toast("Can't find a group with that code"); if(STATE.screen!=='group') goHome(); return; }
   STATE.currentPtr = {code}; STATE.groupData = data;
   STATE.screen='group'; STATE.tab='overview'; STATE.ledgerFilter='all';
@@ -787,17 +985,26 @@ async function openGroup(code){
   render();
 }
 async function refreshGroup(){
-  const data = await backendGet(STATE.currentPtr.code);
+  const data = await docGet('groups', STATE.currentPtr.code);
   if(data){ STATE.groupData = data; render(); toast('Refreshed'); }
 }
 function setTab(tab){ STATE.tab = tab; render(); }
 function setLedgerFilter(f){ STATE.ledgerFilter = f; render(); }
 
+async function continueBootAfterProfile(){
+  const params = new URLSearchParams(location.search);
+  const g = params.get('g');
+  if(g){ await openGroup(g.toUpperCase()); }
+  else { await goHome(); }
+}
+
 window.App = {
   showCreateGroup, showJoinGroup, showAddMember, showAbout, showShare, copyLink, nativeShare,
   pickEmoji, submitCreateGroup, submitJoinGroup, submitAddMember,
-  openTxnModal, refreshTxnHint, submitTxn, deleteTxn,
+  openTxnModal, refreshTxnHint, submitTxn,
   closeModal, goHome, openGroup, refreshGroup, setTab, setLedgerFilter,
+  submitOnboarding, continueBootAfterProfile, showMyProfile, saveMyProfile,
+  goAdmin, submitAdminLogin, adminSignOut,
 };
 
 /* ---------------- boot ---------------- */
@@ -805,9 +1012,19 @@ window.App = {
   STORAGE_MODE = initFirebase() ? 'firebase' : 'local';
   renderBanner();
   const params = new URLSearchParams(location.search);
-  const g = params.get('g');
-  if(g){ await openGroup(g.toUpperCase()); }
-  else { await goHome(); }
+  if(params.get('admin')==='1'){
+    goAdmin();
+    return;
+  }
+  let profile = null;
+  try{ profile = JSON.parse(localStorage.getItem('pouch-my-profile')||'null'); }catch(e){}
+  if(profile && profile.code){
+    STATE.myProfile = profile;
+    await continueBootAfterProfile();
+  } else {
+    STATE.screen = 'onboarding';
+    render();
+  }
 })();
 </script>
 </body>
