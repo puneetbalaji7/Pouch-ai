@@ -282,6 +282,7 @@
   .admin-stat{padding:14px;}
   .admin-stat .n{font-family:'Space Grotesk'; font-weight:700; font-size:26px;}
   .admin-stat .l{font-size:12px; color:var(--muted);}
+  .l-del{background:none; border:none; font-size:15px; padding:4px; color:var(--guava-dark);}
 </style>
 </head>
 <body>
@@ -325,10 +326,11 @@ let STATE = {
   currentPtr:null, groupData:null,
   tab:'overview', ledgerFilter:'all',
   myProfile:null,
-  adminUsers:[], adminGroups:[], adminLoading:false,
+  adminUsers:[], adminGroups:[], adminLoading:false, adminMode:false,
 };
 let STORAGE_MODE = 'local'; // 'firebase' | 'local'
 let db = null;
+let groupUnsub = null;
 
 /* ---------------- storage backend (generic, works for any "collection") ---------------- */
 function initFirebase(){
@@ -577,7 +579,9 @@ function renderGroupHTML(){
         const st = memberStats(data, m.id);
         return `
         <div class="card member-card">
-          <div class="member-top"><div class="m-emoji">${m.emoji}</div><div class="m-name">${esc(m.name)}</div></div>
+          <div class="member-top"><div class="m-emoji">${m.emoji}</div><div class="m-name">${esc(m.name)}${m.linkedCode?` <span class="tag">${esc(m.linkedCode)}</span>`:''}</div>
+            ${STATE.adminMode ? `<button title="Remove member" onclick="App.adminRemoveMember('${m.id}')" style="margin-left:auto;background:none;border:none;font-size:16px;cursor:pointer;">🗑</button>` : ''}
+          </div>
           <div class="m-stats">
             <div class="m-stat"><span class="val" style="color:var(--mint)">${fmt(st.available,cur)}</span>Own money in pot</div>
             <div class="m-stat"><span class="val">${fmt(st.contributed,cur)}</span>Added total</div>
@@ -625,17 +629,19 @@ function renderGroupHTML(){
     </div>`;
 
   const p = STATE.myProfile;
+  const code = STATE.currentPtr.code;
   return `
     <div class="wrap">
       <div class="topbar">
-        <button class="icon-btn" onclick="App.goHome()">←</button>
+        <button class="icon-btn" onclick="App.backFromGroup()">←</button>
         <div class="top-actions">
           ${p ? `<button class="profile-chip" onclick="App.showMyProfile()"><span class="pav">👤</span>${esc(p.name.split(' ')[0])}</button>` : ''}
-          <button class="icon-btn" onclick="App.refreshGroup()" title="Refresh">⟳</button>
+          ${STORAGE_MODE!=='firebase' ? `<button class="icon-btn" onclick="App.refreshGroup()" title="Refresh">⟳</button>` : ''}
           <button class="icon-btn" onclick="App.showAbout()" title="About & privacy">ⓘ</button>
         </div>
       </div>
       <div class="wrap" style="padding-top:2px;">
+        ${STATE.adminMode ? `<div class="hint" style="background:var(--sun-tint); border:2px solid var(--ink); border-radius:12px; padding:10px 12px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:8px;"><span>🛡️ Viewing as admin</span><button class="btn btn-sm btn-guava" onclick="App.adminDeleteGroup('${code}')">🗑 Delete group</button></div>` : ''}
         <div class="group-head">
           <div class="group-emoji" style="width:44px;height:44px;font-size:22px;">${data.emoji}</div>
           <div class="g-title display">${esc(data.name)}</div>
@@ -692,31 +698,36 @@ function renderAdminDashboardHTML(){
         <div class="card admin-stat"><div class="n">${poolStr}</div><div class="l">Total pooled cash</div></div>
       </div>
 
-      <div class="section-title">People</div>
+      <div class="section-title">People <span style="font-size:12px; font-weight:400; color:var(--muted);">Only you can see phone numbers</span></div>
       <div class="card" style="overflow-x:auto;">
         <table class="admin-table">
-          <thead><tr><th>Name</th><th>Phone</th><th>Referred by</th><th>Code</th><th>Joined</th></tr></thead>
+          <thead><tr><th>Name</th><th>Phone</th><th>Referred by</th><th>Code</th><th>Joined</th><th></th></tr></thead>
           <tbody>
-            ${users.length===0 ? `<tr><td colspan="5" style="color:var(--muted);">No one yet</td></tr>` :
+            ${users.length===0 ? `<tr><td colspan="6" style="color:var(--muted);">No one yet</td></tr>` :
               users.sort((a,b)=>b.createdAt-a.createdAt).map(u=>`
-              <tr><td>${esc(u.name)}</td><td>${esc(u.phone)}</td><td>${esc(u.referredBy||'—')}</td><td>${u.code||u.id}</td><td>${new Date(u.createdAt).toLocaleDateString()}</td></tr>
+              <tr><td>${esc(u.name)}</td><td>${esc(u.phone)}</td><td>${esc(u.referredBy||'—')}</td><td>${u.code||u.id}</td><td>${new Date(u.createdAt).toLocaleDateString()}</td>
+              <td><button class="l-del" style="cursor:pointer;" title="Delete profile" onclick="App.adminDeleteUser('${u.code||u.id}')">🗑</button></td></tr>
             `).join('')}
           </tbody>
         </table>
       </div>
 
-      <div class="section-title">Groups</div>
+      <div class="section-title">Groups <button class="btn btn-sm add-mini" onclick="App.adminNewGroup()">+ New group</button></div>
       <div class="card" style="overflow-x:auto;">
         <table class="admin-table">
-          <thead><tr><th>Name</th><th>Code</th><th>Members</th><th>In pot</th><th>Created</th></tr></thead>
+          <thead><tr><th>Name</th><th>Code</th><th>Members</th><th>In pot</th><th>Created</th><th></th></tr></thead>
           <tbody>
-            ${groups.length===0 ? `<tr><td colspan="5" style="color:var(--muted);">No groups yet</td></tr>` :
+            ${groups.length===0 ? `<tr><td colspan="6" style="color:var(--muted);">No groups yet</td></tr>` :
               groups.sort((a,b)=>b.createdAt-a.createdAt).map(g=>`
-              <tr><td>${g.emoji||''} ${esc(g.name)}</td><td>${g.id}</td><td>${(g.members||[]).length}</td><td>${fmt(poolCash(g), g.currency||'$')}</td><td>${new Date(g.createdAt).toLocaleDateString()}</td></tr>
+              <tr style="cursor:pointer;" onclick="App.adminOpenGroup('${g.id}')">
+                <td>${g.emoji||''} ${esc(g.name)}</td><td>${g.id}</td><td>${(g.members||[]).length}</td><td>${fmt(poolCash(g), g.currency||'$')}</td><td>${new Date(g.createdAt).toLocaleDateString()}</td>
+                <td><button class="l-del" style="cursor:pointer;" title="Delete group" onclick="event.stopPropagation(); App.adminDeleteGroup('${g.id}')">🗑</button></td>
+              </tr>
             `).join('')}
           </tbody>
         </table>
       </div>
+      <p class="hint" style="margin-top:10px;">Tap any group's name to open it fully — full member list, every transaction, and admin controls to add members or delete the group.</p>
     </div>
   </div>`;
 }
@@ -792,6 +803,8 @@ function showCreateGroup(){
       ${EMOJIS.map(e=>`<button type="button" class="emoji-opt ${e===chosenEmoji?'sel':''}" onclick="App.pickEmoji(this,'${e}')">${e}</button>`).join('')}
     </div></div>
     <div class="field"><label>Currency</label><select id="cgCurrency">${CURRENCIES.map(c=>`<option value="${c}">${c}</option>`).join('')}</select></div>
+    <div class="field"><label>UPI ID to receive payments (optional)</label><input id="cgUpi" type="text" placeholder="e.g. yourname@okhdfcbank" /></div>
+    <p class="hint" style="margin-top:-8px;">If set, members get a "Pay via UPI" button that opens their own banking app — Pouch never holds or moves the money itself. You can add this later too.</p>
     <div class="hint">You'll get a shareable link right after — send it to whoever's in the group.</div>
     <button class="btn btn-grape btn-block" style="margin-top:16px;" onclick="App.submitCreateGroup()">Create group</button>
   `;
@@ -806,9 +819,10 @@ async function submitCreateGroup(){
   const name = document.getElementById('cgName').value.trim();
   if(!name){ toast('Give your group a name first'); return; }
   const currency = document.getElementById('cgCurrency').value;
+  const upiId = document.getElementById('cgUpi').value.trim();
   const emoji = window.__pickedEmoji || '💸';
   const code = genCode();
-  const data = { name, emoji, currency, createdAt: Date.now(), members:[], txns:[] };
+  const data = { name, emoji, currency, upiId: upiId || null, createdAt: Date.now(), members:[], txns:[] };
   const ok = await docSet('groups', code, data);
   if(!ok){ toast('Could not create group — try again'); return; }
   addRecent(code, name, emoji);
@@ -837,15 +851,26 @@ async function submitJoinGroup(){
 function showShare(justCreated){
   const code = STATE.currentPtr.code;
   const url = shareUrl(code);
+  const data = STATE.groupData;
   const inner = `
     ${justCreated ? `<p class="hint ok">Group created! Share this so people can join:</p>` : ''}
     <div class="link-box"><span style="flex:1;">${url}</span></div>
     <div class="hint">Code: <b>${code}</b></div>
     <button class="btn btn-grape btn-block" style="margin-top:14px;" onclick="App.copyLink('${url}')">📋 Copy link</button>
-    <button class="btn btn-block" style="margin-top:10px;" onclick="App.nativeShare('${url}','${esc(STATE.groupData.name)}')">📤 Share…</button>
+    <button class="btn btn-block" style="margin-top:10px;" onclick="App.nativeShare('${url}','${esc(data.name)}')">📤 Share…</button>
+    <div class="field" style="margin-top:18px;"><label>UPI ID to receive payments (optional)</label>
+      <input id="shUpi" type="text" value="${esc(data.upiId||'')}" placeholder="e.g. yourname@okhdfcbank" />
+    </div>
+    <button class="btn btn-sm" onclick="App.saveGroupUpi()">Save payment info</button>
     ${STORAGE_MODE==='local' ? `<div class="hint warn" style="margin-top:12px;">Heads up: this deployment is running in local-only mode, so this link won't load the group on another device yet.</div>` : `<div class="hint" style="margin-top:12px;">Anyone with this link can view and add to this group — treat it like a shared password.</div>`}
   `;
   openModal(modalShell('Share this group', inner));
+}
+async function saveGroupUpi(){
+  const val = document.getElementById('shUpi').value.trim();
+  STATE.groupData.upiId = val || null;
+  await docSet('groups', STATE.currentPtr.code, STATE.groupData);
+  toast('Payment info saved');
 }
 function copyLink(url){
   if(navigator.clipboard) navigator.clipboard.writeText(url).catch(()=>{});
@@ -861,6 +886,8 @@ function showAddMember(){
   window.__pickedEmoji = chosenEmoji;
   const inner = `
     <div class="field"><label>Name</label><input id="amName" type="text" placeholder="e.g. Priya" maxlength="30" /></div>
+    <div class="field"><label>Their profile code (optional)</label><input id="amCode" type="text" placeholder="e.g. U4F7QZ2" maxlength="10" style="text-transform:uppercase;" /></div>
+    <p class="hint" style="margin-top:-8px;">If they've made a Pouch profile, adding their code keeps them distinct from anyone sharing their name.</p>
     <div class="field"><label>Avatar</label><div class="emoji-pick">
       ${EMOJIS.map(e=>`<button type="button" class="emoji-opt ${e===chosenEmoji?'sel':''}" onclick="App.pickEmoji(this,'${e}')">${e}</button>`).join('')}
     </div></div>
@@ -870,9 +897,10 @@ function showAddMember(){
 }
 async function submitAddMember(){
   const name = document.getElementById('amName').value.trim();
+  const linkedCode = document.getElementById('amCode').value.trim().toUpperCase();
   if(!name){ toast('Enter a name first'); return; }
   const data = STATE.groupData;
-  data.members.push({id:uid(), name, emoji: window.__pickedEmoji || '🙂'});
+  data.members.push({id:uid(), name, emoji: window.__pickedEmoji || '🙂', linkedCode: linkedCode || null});
   await docSet('groups', STATE.currentPtr.code, data);
   closeModal(); toast(name+' added'); render();
 }
@@ -897,10 +925,26 @@ function openTxnModal(type){
     </div></div>
     <div id="txHint"></div>
     <div class="field" style="margin-top:14px;"><label>Note (optional)</label><input id="txNote" type="text" placeholder="e.g. for weekend rent" maxlength="60" /></div>
+    ${(data.upiId && (type==='contribution' || type==='repayment')) ? `
+      <button type="button" class="btn btn-sun btn-block" style="margin-top:6px;" onclick="App.payViaUpiFromModal()">💸 Pay via UPI first</button>
+      <p class="hint">Opens your UPI app to actually send the money. Come back and tap the button below afterward to log it here.</p>
+    ` : ''}
     <button class="btn ${type==='withdrawal'?'btn-guava':type==='borrow'?'btn-grape':type==='repayment'?'btn-sun':'btn-mint'} btn-block" style="margin-top:6px;" id="txSubmitBtn" onclick="App.submitTxn('${type}')">${titles[type]}</button>
   `;
   openModal(modalShell(titles[type], inner));
   refreshTxnHint(type);
+}
+function payViaUpi(amount, note){
+  const data = STATE.groupData;
+  if(!data.upiId){ toast('This group has no UPI ID set up'); return; }
+  const params = new URLSearchParams({ pa: data.upiId, pn: data.name, am: String(amount), cu: 'INR', tn: note || data.name });
+  window.location.href = 'upi://pay?' + params.toString();
+}
+function payViaUpiFromModal(){
+  const amt = parseFloat(document.getElementById('txAmount').value) || 0;
+  const note = document.getElementById('txNote').value.trim();
+  if(amt<=0){ toast('Enter an amount first'); return; }
+  payViaUpi(amt, note);
 }
 function refreshTxnHint(forcedType){
   const data = STATE.groupData;
@@ -969,20 +1013,60 @@ function showAbout(){
 }
 
 /* ============================================================ NAV ============================================================ */
+function detachGroupListener(){ if(groupUnsub){ try{ groupUnsub(); }catch(e){} groupUnsub=null; } }
 async function goHome(){
+  detachGroupListener();
+  STATE.adminMode = false;
   STATE.screen='home'; STATE.homeLoading=true; render();
   const recents = loadRecents();
   const results = await Promise.all(recents.map(async r=>({code:r.code, name:r.name, data: await docGet('groups', r.code)})));
   STATE.homeGroups = results.filter(r=>r.data);
   STATE.homeLoading = false; render();
 }
-async function openGroup(code){
+async function backFromGroup(){
+  detachGroupListener();
+  if(STATE.adminMode){ STATE.adminMode=false; await loadAdminDashboard(); }
+  else { await goHome(); }
+}
+async function openGroup(code, skipRecent){
+  detachGroupListener();
   const data = await docGet('groups', code);
   if(!data){ toast("Can't find a group with that code"); if(STATE.screen!=='group') goHome(); return; }
   STATE.currentPtr = {code}; STATE.groupData = data;
   STATE.screen='group'; STATE.tab='overview'; STATE.ledgerFilter='all';
-  addRecent(code, data.name, data.emoji);
+  if(!skipRecent) addRecent(code, data.name, data.emoji);
   render();
+  if(STORAGE_MODE==='firebase'){
+    groupUnsub = db.collection('groups').doc(code).onSnapshot(function(doc){
+      if(doc.exists && STATE.screen==='group' && STATE.currentPtr && STATE.currentPtr.code===code){
+        STATE.groupData = doc.data();
+        render();
+      }
+    }, function(err){ console.error('live sync error', err); });
+  }
+}
+function adminOpenGroup(code){ STATE.adminMode = true; openGroup(code, true); }
+function adminNewGroup(){ STATE.adminMode = true; showCreateGroup(); }
+async function adminDeleteGroup(code){
+  if(!confirm('Delete this group permanently? This cannot be undone.')) return;
+  try{
+    await db.collection('groups').doc(code).delete();
+    toast('Group deleted');
+    detachGroupListener(); STATE.adminMode=false;
+    await loadAdminDashboard();
+  }catch(e){ toast('Could not delete — check your Firestore rules'); }
+}
+async function adminDeleteUser(code){
+  if(!confirm("Delete this person's profile permanently?")) return;
+  try{ await db.collection('users').doc(code).delete(); toast('Profile deleted'); await loadAdminDashboard(); }
+  catch(e){ toast('Could not delete — check your Firestore rules'); }
+}
+async function adminRemoveMember(memberId){
+  if(!confirm('Remove this member from the group? Their past transactions stay in the ledger but will show as "Someone".')) return;
+  const data = STATE.groupData;
+  data.members = data.members.filter(m=>m.id!==memberId);
+  await docSet('groups', STATE.currentPtr.code, data);
+  render(); toast('Member removed');
 }
 async function refreshGroup(){
   const data = await docGet('groups', STATE.currentPtr.code);
@@ -1000,11 +1084,12 @@ async function continueBootAfterProfile(){
 
 window.App = {
   showCreateGroup, showJoinGroup, showAddMember, showAbout, showShare, copyLink, nativeShare,
-  pickEmoji, submitCreateGroup, submitJoinGroup, submitAddMember,
-  openTxnModal, refreshTxnHint, submitTxn,
-  closeModal, goHome, openGroup, refreshGroup, setTab, setLedgerFilter,
+  pickEmoji, submitCreateGroup, submitJoinGroup, submitAddMember, saveGroupUpi,
+  openTxnModal, refreshTxnHint, submitTxn, payViaUpiFromModal,
+  closeModal, goHome, backFromGroup, openGroup, refreshGroup, setTab, setLedgerFilter,
   submitOnboarding, continueBootAfterProfile, showMyProfile, saveMyProfile,
   goAdmin, submitAdminLogin, adminSignOut,
+  adminOpenGroup, adminNewGroup, adminDeleteGroup, adminDeleteUser, adminRemoveMember,
 };
 
 /* ---------------- boot ---------------- */
